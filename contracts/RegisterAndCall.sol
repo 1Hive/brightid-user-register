@@ -3,10 +3,11 @@ pragma solidity ^0.4.24;
 contract RegisterAndCall {
 
     /**
-    * @dev This allows users to verify their BrightId account and interact with a contract in one transaction
-    * @param _verifiedAddress Address of the account being verified
-    * @param _data Optional data that can be used to add signalling information in more complex staking applications
+    * @dev This allows users to verify their BrightId account and interact with a contract in one transaction.
+    *      Implementers of this function should check that msg.sender is the BrightIdUserRegister contract expected.
+    * @param _usersUniqueId The unique address assigned to the registered BrightId user
+    * @param _data Optional data that can be used to determine what operations to execute in the recipient contract
     */
-    function receiveRegistration(address _verifiedAddress, bytes _data) external;
+    function receiveRegistration(address _usersUniqueId, bytes _data) external;
 
 }

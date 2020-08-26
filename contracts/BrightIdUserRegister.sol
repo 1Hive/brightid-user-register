@@ -114,13 +114,12 @@ contract BrightIdUserRegister is AragonApp {
         userRegistration.registerTime = now;
 
         if (userRegistration.uniqueUserId == address(0)) {
-            address uniqueUserId = _addrs[_addrs.length - 1];
-            userRegistration.uniqueUserId == uniqueUserId;
+            userRegistration.uniqueUserId == _addrs[_addrs.length - 1];
             _voidPreviousRegistrations(_addrs);
         }
 
         if (address(_registerAndCall) != address(0)) {
-            _registerAndCall.receiveRegistration(msg.sender, _functionCallData);
+            _registerAndCall.receiveRegistration(userRegistration.uniqueUserId, _functionCallData);
         }
 
         emit Register(msg.sender);
