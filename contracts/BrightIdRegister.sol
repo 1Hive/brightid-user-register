@@ -4,7 +4,7 @@ import "@aragon/os/contracts/apps/AragonApp.sol";
 import "@aragon/os/contracts/lib/math/SafeMath.sol";
 import "./RegisterAndCall.sol";
 
-contract BrightIdUserRegister is AragonApp {
+contract BrightIdRegister is AragonApp {
     using SafeMath for uint256;
 
     bytes32 constant public UPDATE_SETTINGS_ROLE = keccak256("UPDATE_SETTINGS_ROLE");
@@ -26,7 +26,7 @@ contract BrightIdUserRegister is AragonApp {
     uint256 public registrationPeriod;
     uint256 public verificationTimestampVariance;
 
-    mapping (address => UserRegistration) userRegistrations;
+    mapping (address => UserRegistration) public userRegistrations;
 
     event Register(address sender);
 
@@ -35,15 +35,15 @@ contract BrightIdUserRegister is AragonApp {
     * @param _brightIdVerifier BrightId verifier address that signs BrightId verifications
     * @param _registrationPeriod Length of time after a registration before registration is required again
     * @param _verificationTimestampVariance Acceptable period of time between creating a BrightId verification
-    *       and registering it with the BrightIdUserRegister
+    *       and registering it with the BrightIdRegister
     */
-    constructor(
+    function initialize(
         bytes32 _brightIdContext,
         address _brightIdVerifier,
         uint256 _registrationPeriod,
         uint256 _verificationTimestampVariance
     )
-        public
+        public onlyInit
     {
         require(_registrationPeriod > 0, ERROR_REGISTRATION_PERIOD_ZERO);
 
@@ -51,17 +51,15 @@ contract BrightIdUserRegister is AragonApp {
         brightIdVerifier = _brightIdVerifier;
         registrationPeriod = _registrationPeriod;
         verificationTimestampVariance = _verificationTimestampVariance;
+
+        initialized();
     }
 
     /**
-    * @notice Set the BrightId context used to `_brightIdContext` and the verifier to `_brightIdVerifier`
-    * @param _brightIdContext BrightId context used for verifying users
-    * @param _brightIdVerifier BrightId verifier address that signs BrightId verifications
+    * @notice Set the BrightId verifier address to `_brightIdVerifier`
+    * @param _brightIdVerifier Address used to verify signed BrightId verifications
     */
-    function setBrightIdSettings(bytes32 _brightIdContext, address _brightIdVerifier)
-        external auth(UPDATE_SETTINGS_ROLE)
-    {
-        brightIdContext = _brightIdContext;
+    function setBrightIdVerifier(address _brightIdVerifier) external auth(UPDATE_SETTINGS_ROLE) {
         brightIdVerifier = _brightIdVerifier;
     }
 
@@ -70,13 +68,14 @@ contract BrightIdUserRegister is AragonApp {
     * @param _registrationPeriod Length of time after a registration before registration is required again
     */
     function setRegistrationPeriod(uint256 _registrationPeriod) external auth(UPDATE_SETTINGS_ROLE) {
+        require(_registrationPeriod > 0, ERROR_REGISTRATION_PERIOD_ZERO);
         registrationPeriod = _registrationPeriod;
     }
 
     /**
     * @notice Set the verification timestamp variance to `_verificationTimestampVariance`
-    * @param _verificationTimestampVariance Acceptable period of time between creating a BrightId verification
-    *       and registering it with the BrightIdUserRegister
+    * @param _verificationTimestampVariance Acceptable period of time between fetching a BrightId verification
+    *       and registering it with the BrightIdRegister
     */
     function setVerificationTimestampVariance(uint256 _verificationTimestampVariance) external auth(UPDATE_SETTINGS_ROLE) {
         verificationTimestampVariance = _verificationTimestampVariance;
@@ -86,7 +85,7 @@ contract BrightIdUserRegister is AragonApp {
     * @notice Register the sender as a unique individual with a BrightId verification and assign the first address
     *       they registered with as their unique ID
     * @param _brightIdContext The context used in the users verification
-    * @param _addrs The history of addresses, or contextIds, used by this user to register with BrightID for the BrightId context
+    * @param _addrs The history of addresses, or contextIds, used by this user to register with BrightID for the _brightIdContext
     * @param _timestamp The time the verification was created by a BrightId node
     * @param _v Part of the BrightId nodes signature verifying the users uniqueness
     * @param _r Part of the BrightId nodes signature verifying the users uniqueness
@@ -111,10 +110,10 @@ contract BrightIdUserRegister is AragonApp {
         require(_isVerifiedUnique(_brightIdContext, _addrs, _timestamp, _v, _r, _s), ERROR_INCORRECT_VERIFICATION);
         require(!userRegistration.addressVoid, ERROR_ADDRESS_VOIDED);
 
-        userRegistration.registerTime = now;
+        userRegistration.registerTime = getTimestamp();
 
         if (userRegistration.uniqueUserId == address(0)) {
-            userRegistration.uniqueUserId == _addrs[_addrs.length - 1];
+            userRegistration.uniqueUserId == _addrs[_addrs.length - 1]; // The last address is/was the first address registered with the _brightIdContext
             _voidPreviousRegistrations(_addrs);
         }
 
@@ -160,7 +159,7 @@ contract BrightIdUserRegister is AragonApp {
 
         bool correctVerifier = brightIdVerifier == verifierAddress;
         bool correctContext = brightIdContext == _brightIdContext;
-        bool acceptableTimestamp = now < _timestamp.add(verificationTimestampVariance);
+        bool acceptableTimestamp = getTimestamp() < _timestamp.add(verificationTimestampVariance);
 
         return correctVerifier && correctContext && acceptableTimestamp;
     }
@@ -185,7 +184,7 @@ contract BrightIdUserRegister is AragonApp {
 
     function _isVerified(UserRegistration storage _userRegistration) internal returns (bool) {
         bool hasUniqueId = _userRegistration.uniqueUserId != address(0);
-        bool userRegisteredWithinPeriod = now < _userRegistration.registerTime.add(registrationPeriod);
+        bool userRegisteredWithinPeriod = getTimestamp() < _userRegistration.registerTime.add(registrationPeriod);
         bool userValid = !_userRegistration.addressVoid;
 
         return hasUniqueId && userRegisteredWithinPeriod && userValid;

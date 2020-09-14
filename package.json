@@ -3,8 +3,7 @@
   "version": "0.0.1",
   "description": "placeholder-app-description",
   "scripts": {
-    "postinstall": "yarn compile && yarn build-app",
-    "build-app": "cd app && npm install && cd ..",
+    "postinstall": "yarn compile",
     "compile": "buidler compile --force",
     "test": "buidler test --network buidlerevm",
     "start": "buidler start",
@@ -13,15 +12,17 @@
     "publish:patch": "buidler publish patch"
   },
   "dependencies": {
-    "@aragon/os": "^5.0.0-beta.8"
+    "@aragon/os": "^5.0.0-rc.0"
   },
   "devDependencies": {
-    "@aragon/buidler-aragon": "^0.2.0",
-    "@aragon/contract-test-helpers": "0.0.1",
+    "@aragon/buidler-aragon": "^0.2.9",
+    "@aragon/contract-helpers-test": "^0.1.0-rc.2",
     "@nomiclabs/buidler": "^1.3.0",
     "@nomiclabs/buidler-etherscan": "^1.3.0",
     "@nomiclabs/buidler-truffle5": "^1.3.0",
     "@nomiclabs/buidler-web3": "^1.3.0",
-    "web3": "^1.2.0"
+    "web3": "^1.2.0",
+    "eth-ens-namehash": "^2.0.8",
+    "ethers": "^5.0.13"
   }
 }
