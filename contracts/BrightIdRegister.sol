@@ -113,7 +113,7 @@ contract BrightIdRegister is AragonApp {
         userRegistration.registerTime = getTimestamp();
 
         if (userRegistration.uniqueUserId == address(0)) {
-            userRegistration.uniqueUserId == _addrs[_addrs.length - 1]; // The last address is/was the first address registered with the _brightIdContext
+            userRegistration.uniqueUserId = _addrs[_addrs.length - 1]; // The last address is/was the first address registered with the _brightIdContext
             _voidPreviousRegistrations(_addrs);
         }
 

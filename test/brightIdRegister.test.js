@@ -1,19 +1,21 @@
 const BrightIdRegister = artifacts.require('BrightIdRegisterMock.sol')
+const RegisterAndCall = artifacts.require('RegisterAndCallMock.sol')
+const RegisterAndCallAbi = require('../artifacts/RegisterAndCallMock.json').abi
 const { assertRevert } = require('@aragon/contract-helpers-test/src/asserts/assertThrow')
-const { ONE_DAY, ONE_WEEK, ZERO_ADDRESS } = require('@aragon/contract-helpers-test')
+const { ONE_DAY, ONE_WEEK, ZERO_ADDRESS, getEventArgument, getEvents } = require('@aragon/contract-helpers-test')
 const { newDao, newApp } = require('./helpers/dao')
 const ethers = require('ethers')
 
 const ANY_ADDRESS = '0xffffffffffffffffffffffffffffffffffffffff'
 
-// Use the private key of whatever the third account is in the local chain
-// In this case it is 0xe5904695748fe4a84b40b3fc79de2277660bd1d3 which is the third address in the buidlerevm node
-const VERIFICATIONS_PRIVATE_KEY = '0x23c601ae397441f3ef6f1075dcb0031ff17fb079837beadaf3c84d96c6f3e569'
+// Use the private key of whatever the second account is in the local chain
+// In this case it is 0xead9c93b79ae7c1591b1fb5323bd777e86e150d4 which is the third address in the buidlerevm node
+const VERIFICATIONS_PRIVATE_KEY = '0xd49743deccbccc5dc7baa8e69e5be03298da8688a15dd202e20f15d5e0e9a9fb'
 const BRIGHT_ID_CONTEXT = '0x3168697665000000000000000000000000000000000000000000000000000000' // stringToBytes32("1hive")
 const REGISTRATION_PERIOD = ONE_WEEK
 const VERIFICATION_TIMESTAMP_VARIANCE = ONE_DAY
 
-contract('BrightIdRegister', ([appManager, brightIdUser, verifier, otherVerifier]) => {
+contract('BrightIdRegister', ([appManager, verifier, verifier2, brightIdUser, brightIdUser2, brightIdUser3]) => {
   let dao, acl
   let brightIdRegsiterBase, brightIdRegister
 
@@ -54,15 +56,15 @@ contract('BrightIdRegister', ([appManager, brightIdUser, verifier, otherVerifier
 
     context('setBrightIdVerifier(brightIdVerifier)', () => {
       it('sets the bright id verifier', async () => {
-        await brightIdRegister.setBrightIdVerifier(otherVerifier)
+        await brightIdRegister.setBrightIdVerifier(verifier2)
 
         const brightIdVerifier = await brightIdRegister.brightIdVerifier()
-        assert.equal(brightIdVerifier, otherVerifier, 'Incorrect bright id verifier')
+        assert.equal(brightIdVerifier, verifier2, 'Incorrect bright id verifier')
       })
 
       it('reverts when no permission', async () => {
         await acl.revokePermission(ANY_ADDRESS, brightIdRegister.address, await brightIdRegister.UPDATE_SETTINGS_ROLE())
-        await assertRevert(brightIdRegister.setBrightIdVerifier(otherVerifier), 'APP_AUTH_FAILED')
+        await assertRevert(brightIdRegister.setBrightIdVerifier(verifier2), 'APP_AUTH_FAILED')
       })
     })
 
@@ -111,9 +113,12 @@ contract('BrightIdRegister', ([appManager, brightIdUser, verifier, otherVerifier
           { type: 'address[]', value: contextIds },
           timestamp
         )
-
         const signingKey = new ethers.utils.SigningKey(VERIFICATIONS_PRIVATE_KEY)
         return signingKey.signDigest(hashedMessage)
+      }
+
+      const assertCloseToBn = (actual, expected, delta, message) => {
+        assert.closeTo(actual.toNumber(), expected.toNumber(), delta, message)
       }
 
       beforeEach(async () => {
@@ -122,69 +127,92 @@ contract('BrightIdRegister', ([appManager, brightIdUser, verifier, otherVerifier
         sig = getVerificationsSignature(addresses, timestamp)
       })
 
-      const assertCloseToBn = (actual, expected, message) => {
-        assert.closeTo(actual.toNumber(), expected.toNumber(), message)
-      }
+      it('reverts when sender not first address in verification contextIds', async () => {
+        await assertRevert(brightIdRegister.register(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, ZERO_ADDRESS, "0x0", { from: brightIdUser2 }), 'SENDER_NOT_IN_VERIFICATION')
+      })
 
-      it.only('registers user', async () => {
+      it('reverts when incorrect verification signature used', async () => {
+        await assertRevert(brightIdRegister.register(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v - 1, sig.r, sig.s, ZERO_ADDRESS, "0x0", { from: brightIdUser }), 'INCORRECT_VERIFICATION')
+      })
+
+      it('reverts when verification timestamp too far in the past', async () => {
+        const verificationTimestampVariance = await brightIdRegister.verificationTimestampVariance()
+        await brightIdRegister.mockIncreaseTime(verificationTimestampVariance)
+        await assertRevert(brightIdRegister.register(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, ZERO_ADDRESS, "0x0", { from: brightIdUser }), 'INCORRECT_VERIFICATION')
+      })
+
+      it('reverts when voided address is used', async () => {
+        const newAddresses = [brightIdUser2, brightIdUser]
+        const newSig = getVerificationsSignature(newAddresses, timestamp)
+        await brightIdRegister.register(BRIGHT_ID_CONTEXT, newAddresses, timestamp, newSig.v, newSig.r, newSig.s, ZERO_ADDRESS, "0x0", { from: brightIdUser2 })
+
+        await assertRevert(brightIdRegister.register(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, ZERO_ADDRESS, "0x0", { from: brightIdUser }),
+          'ADDRESS_VOIDED')
+      })
+
+      it('registers user', async () => {
         await brightIdRegister.register(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, ZERO_ADDRESS, "0x0", { from: brightIdUser })
 
-        const {uniqueUserId, registerTime, addressVoid} = await brightIdRegister.userRegistrations(brightIdUser)
+        const { uniqueUserId, registerTime, addressVoid } = await brightIdRegister.userRegistrations(brightIdUser)
         assert.equal(uniqueUserId, brightIdUser, 'Incorrect unique id')
-        assertCloseToBn(registerTime, timestamp, 'Incorrect register time')
+        assertCloseToBn(registerTime, timestamp, 3, 'Incorrect register time')
         assert.isFalse(addressVoid, 'Incorrect address void')
       })
 
-      it('voids all previously registered accounts', async () => {
-        addresses = [faucetUserSecondAddress, faucetUser]
+      it('does not update unique user id when registering with a new account', async () => {
+        await brightIdRegister.register(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, ZERO_ADDRESS, "0x0", { from: brightIdUser })
+        addresses = [brightIdUser2, brightIdUser]
         sig = getVerificationsSignature(addresses, timestamp)
-        await brightIdFaucet.claimAndOrRegister(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, { from: faucetUserSecondAddress })
 
-        const { addressVoid: originalAddressVoid } = await brightIdFaucet.claimers(faucetUser)
-        const { addressVoid: newAddressVoid } = await brightIdFaucet.claimers(faucetUserSecondAddress)
+        await brightIdRegister.register(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, ZERO_ADDRESS, "0x0", { from: brightIdUser2 })
+
+        const { uniqueUserId } = await brightIdRegister.userRegistrations(brightIdUser)
+        assert.equal(uniqueUserId, brightIdUser, 'Incorrect unique id')
+      })
+
+      it('voids all previously registered or unregistered accounts', async () => {
+        addresses = [brightIdUser2, brightIdUser]
+        sig = getVerificationsSignature(addresses, timestamp)
+        await brightIdRegister.register(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, ZERO_ADDRESS, "0x0", { from: brightIdUser2 })
+
+        const { addressVoid: originalAddressVoid } = await brightIdRegister.userRegistrations(brightIdUser)
+        const { addressVoid: newAddressVoid } = await brightIdRegister.userRegistrations(brightIdUser2)
         assert.isTrue(originalAddressVoid, 'Incorrect original address void')
         assert.isFalse(newAddressVoid, 'Incorrect new address void')
       })
 
       it('voids all previously registered accounts when already voided accounts', async () => {
-        addresses = [faucetUserSecondAddress, faucetUser]
+        addresses = [brightIdUser2, brightIdUser]
         sig = getVerificationsSignature(addresses, timestamp)
-        await brightIdFaucet.claimAndOrRegister(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, { from: faucetUserSecondAddress })
-        addresses = [faucetUserThirdAddress, faucetUserSecondAddress, faucetUser]
+        await brightIdRegister.register(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, ZERO_ADDRESS, "0x0", { from: brightIdUser2 })
+        addresses = [brightIdUser3, brightIdUser2, brightIdUser]
         sig = getVerificationsSignature(addresses, timestamp)
-        await brightIdFaucet.mockIncreaseTime(PERIOD_LENGTH)
 
-        await brightIdFaucet.claimAndOrRegister(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, { from: faucetUserThirdAddress })
+        await brightIdRegister.register(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, ZERO_ADDRESS, "0x0", { from: brightIdUser3 })
 
-        const { addressVoid: originalAddressVoid } = await brightIdFaucet.claimers(faucetUser)
-        const { addressVoid: secondAddressVoid } = await brightIdFaucet.claimers(faucetUserSecondAddress)
-        const { addressVoid: thirdAddressVoid } = await brightIdFaucet.claimers(faucetUserThirdAddress)
+        const { addressVoid: originalAddressVoid } = await brightIdRegister.userRegistrations(brightIdUser)
+        const { addressVoid: secondAddressVoid } = await brightIdRegister.userRegistrations(brightIdUser2)
+        const { addressVoid: thirdAddressVoid } = await brightIdRegister.userRegistrations(brightIdUser3)
         assert.isTrue(originalAddressVoid, 'Incorrect original address void')
         assert.isTrue(secondAddressVoid, 'Incorrect second address void')
         assert.isFalse(thirdAddressVoid, 'Incorrect third address void')
       })
 
-      it('reverts when incorrect verification signature used', async () => {
-        await assertRevert(brightIdFaucet.claimAndOrRegister(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v - 1, sig.r, sig.s, { from: faucetUser }), 'INCORRECT_VERIFICATION')
+      it('calls external function when specified', async () => {
+        const expectedBytesSent = "0xabcd";
+        const registerAndCall = await RegisterAndCall.new()
+
+        const registerReceipt = await brightIdRegister.register(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, registerAndCall.address, expectedBytesSent, { from: brightIdUser })
+
+        const userUniqueId = getEventArgument(registerReceipt, "ReceiveRegistration", "usersUniqueId",  { decodeForAbi: RegisterAndCallAbi })
+        const actualBytesSent = getEventArgument(registerReceipt, "ReceiveRegistration", "data",  { decodeForAbi: RegisterAndCallAbi })
+        assert.equal(userUniqueId, brightIdUser.toLowerCase(), "Incorrect unique user id")
+        assert.equal(actualBytesSent, expectedBytesSent, "Incorrect data")
       })
 
-      it('reverts when verification timestamp too far in the past', async () => {
-        const verificationTimestampVariance = await brightIdFaucet.VERIFICATION_TIMESTAMP_VARIANCE()
-        await brightIdFaucet.mockIncreaseTime(verificationTimestampVariance)
-        await assertRevert(brightIdFaucet.claimAndOrRegister(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, { from: faucetUser }), 'INCORRECT_VERIFICATION')
-      })
-
-      it('reverts when sender not first address in verification contextIds', async () => {
-        await assertRevert(brightIdFaucet.claimAndOrRegister(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, { from: faucetOwner }), 'SENDER_NOT_IN_VERIFICATION')
-      })
-
-      it('reverts when voided address is used', async () => {
-        const newAddresses = [faucetUserSecondAddress, faucetUser]
-        const newSig = getVerificationsSignature(newAddresses, timestamp)
-        await brightIdFaucet.claimAndOrRegister(BRIGHT_ID_CONTEXT, newAddresses, timestamp, newSig.v, newSig.r, newSig.s, { from: faucetUserSecondAddress })
-
-        await assertRevert(brightIdFaucet.claimAndOrRegister(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, { from: faucetUser }),
-          'ADDRESS_VOIDED')
+      it('does not call external function when address is 0x0', async () => {
+        const registerReceipt = await brightIdRegister.register(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, ZERO_ADDRESS, "0x0", { from: brightIdUser })
+        assert.deepEqual(getEvents(registerReceipt, "ReceiveRegistration", { decodeForAbi: RegisterAndCallAbi }), [], "Incorrect event fired")
       })
     })
   })
