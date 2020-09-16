@@ -112,9 +112,16 @@ contract BrightIdRegister is AragonApp {
 
         userRegistration.registerTime = getTimestamp();
 
+        address uniqueUserId = _addrs[_addrs.length - 1];  // The last address is/was the first address registered with the _brightIdContext
         if (userRegistration.uniqueUserId == address(0)) {
-            userRegistration.uniqueUserId = _addrs[_addrs.length - 1]; // The last address is/was the first address registered with the _brightIdContext
+            userRegistration.uniqueUserId = uniqueUserId;
             _voidPreviousRegistrations(_addrs);
+        }
+
+        // We do this to ensure calls of uniqueUserId() that use the result of uniqueUserId() will
+        // return the uniqueUserId even if the user has not registered their initial address
+        if (userRegistrations[uniqueUserId].uniqueUserId == address(0)) {
+            userRegistrations[uniqueUserId].uniqueUserId = uniqueUserId;
         }
 
         if (address(_registerAndCall) != address(0)) {

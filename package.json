@@ -1,12 +1,18 @@
 {
-  "name": "brightid-register",
-  "version": "0.0.1",
-  "description": "placeholder-app-description",
+  "name": "@1hive/apps-brightid-register",
+  "version": "0.1.2",
+  "description": "Aragon App to maintain BrightId verifications and provide unique id's for users to smart contracts",
+  "license": "GPL-3.0",
+  "files": [
+    "/artifacts",
+    "/arapp.json",
+    "/build",
+    "/contracts",
+    "/test"
+  ],
   "scripts": {
-    "postinstall": "yarn compile",
     "compile": "buidler compile --force",
     "test": "buidler test --network buidlerevm",
-    "start": "buidler start",
     "publish:major": "buidler publish major",
     "publish:minor": "buidler publish minor",
     "publish:patch": "buidler publish patch"
