@@ -95,15 +95,15 @@ contract BrightIdRegister is AragonApp {
     */
     function register(
         bytes32 _brightIdContext,
-        address[] memory _addrs,
+        address[] _addrs,
         uint256 _timestamp,
         uint8 _v,
         bytes32 _r,
         bytes32 _s,
         RegisterAndCall _registerAndCall,
-        bytes memory _functionCallData
+        bytes _functionCallData
     )
-        public
+        external
     {
         UserRegistration storage userRegistration = userRegistrations[msg.sender];
         require(msg.sender == _addrs[0], ERROR_SENDER_NOT_IN_VERIFICATION);
@@ -128,17 +128,24 @@ contract BrightIdRegister is AragonApp {
     * @notice Return whether or not the BrightId user is verified
     * @param _brightIdUser The BrightId user's address
     */
-    function isVerified(address _brightIdUser) public returns (bool) {
-        UserRegistration storage userRegistration = userRegistrations[msg.sender];
-        return _isVerified(userRegistration);
+    function isVerified(address _brightIdUser) external view returns (bool) {
+        UserRegistration storage userRegistration = userRegistrations[_brightIdUser];
+
+        bool hasUniqueId = userRegistration.uniqueUserId != address(0);
+        bool userRegisteredWithinPeriod = getTimestamp() < userRegistration.registerTime.add(registrationPeriod);
+        bool userValid = !userRegistration.addressVoid;
+
+        return hasUniqueId && userRegisteredWithinPeriod && userValid;
     }
 
     /**
     * @notice Return a users unique ID, which is the first address they registered with
+    * @dev Addresses that have been used as contextId's within this context that were not registered with the
+    *    BrightIdRegister will not have a unique user id set and this function will revert.
     * @param _brightIdUser The BrightId user's address
     */
-    function userUniqueId(address _brightIdUser) external returns (address) {
-        UserRegistration storage userRegistration = userRegistrations[msg.sender];
+    function uniqueUserId(address _brightIdUser) external view returns (address) {
+        UserRegistration storage userRegistration = userRegistrations[_brightIdUser];
         require(userRegistration.uniqueUserId != address(0), ERROR_NO_UNIQUE_ID_ASSIGNED);
 
         return userRegistration.uniqueUserId;
@@ -180,13 +187,5 @@ contract BrightIdRegister is AragonApp {
             userRegistrations[_addrs[index]].addressVoid = true;
             index++;
         }
-    }
-
-    function _isVerified(UserRegistration storage _userRegistration) internal returns (bool) {
-        bool hasUniqueId = _userRegistration.uniqueUserId != address(0);
-        bool userRegisteredWithinPeriod = getTimestamp() < _userRegistration.registerTime.add(registrationPeriod);
-        bool userValid = !_userRegistration.addressVoid;
-
-        return hasUniqueId && userRegisteredWithinPeriod && userValid;
     }
 }
