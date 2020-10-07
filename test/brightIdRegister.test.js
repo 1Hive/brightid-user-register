@@ -9,7 +9,7 @@ const ethers = require('ethers')
 const ANY_ADDRESS = '0xffffffffffffffffffffffffffffffffffffffff'
 
 // Use the private key of whatever the second account is in the local chain
-// In this case it is 0xead9c93b79ae7c1591b1fb5323bd777e86e150d4 which is the third address in the buidlerevm node
+// In this case it is 0xead9c93b79ae7c1591b1fb5323bd777e86e150d4 which is the second address in the buidlerevm node
 const VERIFICATIONS_PRIVATE_KEY = '0xd49743deccbccc5dc7baa8e69e5be03298da8688a15dd202e20f15d5e0e9a9fb'
 const BRIGHT_ID_CONTEXT = '0x3168697665000000000000000000000000000000000000000000000000000000' // stringToBytes32("1hive")
 const REGISTRATION_PERIOD = ONE_WEEK
@@ -247,7 +247,6 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, brightIdUser, br
     })
 
     context('uniqueUserId(brightIdUser)', async () => {
-
       it('reverts when no unique user id', async () => {
         await assertRevert(brightIdRegister.uniqueUserId(brightIdUser), 'NO_UNIQUE_ID_ASSIGNED')
       })
