@@ -125,7 +125,7 @@ contract BrightIdRegister is AragonApp {
         }
 
         if (address(_registerAndCall) != address(0)) {
-            _registerAndCall.receiveRegistration(userRegistration.uniqueUserId, _functionCallData);
+            _registerAndCall.receiveRegistration(msg.sender, userRegistration.uniqueUserId, _functionCallData);
         }
 
         emit Register(msg.sender);

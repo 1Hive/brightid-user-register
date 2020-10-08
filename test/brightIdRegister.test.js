@@ -198,8 +198,10 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, brightIdUser, br
 
         const registerReceipt = await brightIdRegister.register(BRIGHT_ID_CONTEXT, addresses, timestamp, sig.v, sig.r, sig.s, registerAndCall.address, expectedBytesSent, { from: brightIdUser })
 
+        const userSenderAddress = getEventArgument(registerReceipt, 'ReceiveRegistration', 'usersSenderAddress', { decodeForAbi: RegisterAndCallAbi })
         const userUniqueId = getEventArgument(registerReceipt, 'ReceiveRegistration', 'usersUniqueId', { decodeForAbi: RegisterAndCallAbi })
         const actualBytesSent = getEventArgument(registerReceipt, 'ReceiveRegistration', 'data', { decodeForAbi: RegisterAndCallAbi })
+        assert.equal(userSenderAddress, brightIdUser.toLowerCase(), 'Incorrect sender address')
         assert.equal(userUniqueId, brightIdUser.toLowerCase(), 'Incorrect unique user id')
         assert.equal(actualBytesSent, expectedBytesSent, 'Incorrect data')
       })
