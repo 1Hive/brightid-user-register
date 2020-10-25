@@ -342,5 +342,17 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, brightIdUser, br
         assert.equal(user3UniqueId, brightIdUser, 'Incorrect user 3 unique id')
       })
     })
+
+    context('hasUniqueUserId(brightIdUser)', async () => {
+      it('returns false when no unique user id', async () => {
+        assert.isFalse(await brightIdRegister.hasUniqueUserId(brightIdUser), 'Incorrect has unique user id')
+      })
+
+      it('returns true when unique user id is set', async () => {
+        await brightIdRegister.register(addresses, timestamps, signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser })
+
+        assert.isTrue(await brightIdRegister.hasUniqueUserId(brightIdUser), 'Incorrect has unique user id')
+      })
+    })
   })
 })

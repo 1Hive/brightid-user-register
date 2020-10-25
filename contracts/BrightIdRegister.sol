@@ -154,6 +154,15 @@ contract BrightIdRegister is AragonApp {
     }
 
     /**
+    * @notice Return whether an address has a unique id assigned/was previously verified
+    * @param _brightIdUser The BrightId user's address
+    */
+    function hasUniqueUserId(address _brightIdUser) external view returns (bool) {
+        UserRegistration storage userRegistration = userRegistrations[_brightIdUser];
+        return userRegistration.uniqueUserId != address(0);
+    }
+
+    /**
     * @notice Return a users unique ID, which is the first address they registered with
     * @dev Addresses that have been used as contextId's within this context that were not registered with the
     *    BrightIdRegister will not have a unique user id set and this function will revert.
