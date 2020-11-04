@@ -61,7 +61,8 @@ contract BrightIdRegister is AragonApp {
     }
 
     /**
-    * @notice Set the BrightId verifier address to `_brightIdVerifier`
+    * @notice Set the BrightId verifier addresses to `_brightIdVerifiers`
+    * @dev Should never use address(0) as this will allow all verifications.
     * @param _brightIdVerifiers Addresses used to verify signed BrightId verifications
     */
     function setBrightIdVerifiers(address[] _brightIdVerifiers) external auth(UPDATE_SETTINGS_ROLE) {
