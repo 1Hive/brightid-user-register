@@ -1,12 +1,10 @@
 // Run with 'npx buidler run scripts/create-verification.js --network rinkeby'
 // Requires the private key from the key you want to verify be in process.env.ETH_KEY as specified in buidler.config.js
 
-// TODO: Redeploy BrightIdRegister to Rinkeby, redeploy DAO and update below script.
-
 const BrightIdRegister = artifacts.require('BrightIdRegister')
 const ethers = require('ethers')
 
-const BRIGHTID_REGISTER_ADDRESS = '0xaec078c343076e361b20708b6549fd0058b3307e'
+const BRIGHTID_REGISTER_ADDRESS = '0xa99e62a92308e56a8df30506fa2ce5586bc126b4'
 const VERIFICATIONS_PRIVATE_KEY = '0xd49743deccbccc5dc7baa8e69e5be03298da8688a15dd202e20f15d5e0e9a9fb' // Public address 0xead9c93b79ae7c1591b1fb5323bd777e86e150d4
 const BRIGHT_ID_CONTEXT = '0x3168697665000000000000000000000000000000000000000000000000000000' // stringToBytes32("1hive")
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
