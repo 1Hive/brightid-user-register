@@ -3,21 +3,30 @@ pragma solidity ^0.4.24;
 import "@aragon/os/contracts/apps/AragonApp.sol";
 import "@aragon/os/contracts/lib/math/SafeMath.sol";
 import "./RegisterAndCall.sol";
+import "./lib/ArrayUtils.sol";
 
 contract BrightIdRegister is AragonApp {
     using SafeMath for uint256;
+    using ArrayUtils for address[];
 
     bytes32 constant public UPDATE_SETTINGS_ROLE = keccak256("UPDATE_SETTINGS_ROLE");
 
-    string private constant ERROR_NO_VERIFIERS = "BRIGHTID_NO_VERIFIERS";
-    string private constant ERROR_REGISTRATION_PERIOD_ZERO = "BRIGHTID_REGISTRATION_PERIOD_ZERO";
+    uint256 constant public MIN_BRIGHTID_VERIFIERS = 1;
+    uint256 constant public MAX_BRIGHTID_VERIFIERS = 20;
+
     string private constant ERROR_SENDER_NOT_IN_VERIFICATION = "BRIGHTID_SENDER_NOT_IN_VERIFICATION";
     string private constant ERROR_ADDRESS_VOIDED = "BRIGHTID_ADDRESS_VOIDED";
-    string private constant ERROR_INCORRECT_TIMESTAMPS = "BRIGHTID_INCORRECT_TIMESTAMPS";
     string private constant ERROR_NO_UNIQUE_ID_ASSIGNED = "BRIGHTID_NO_UNIQUE_ID_ASSIGNED";
+    string private constant ERROR_NO_VERIFIERS = "BRIGHTID_NO_VERIFIERS";
+    string private constant ERROR_TOO_MANY_VERIFIERS = "BRIGHTID_TOO_MANY_VERIFIERS";
+    string private constant ERROR_NOT_ENOUGH_VERIFICATIONS = "BRIGHTID_NOT_ENOUGH_VERIFICATIONS";
+    string private constant ERROR_TOO_MANY_VERIFICATIONS = "BRIGHTID_TOO_MANY_VERIFICATIONS";
+    string private constant ERROR_REGISTRATION_PERIOD_ZERO = "BRIGHTID_REGISTRATION_PERIOD_ZERO";
+    string private constant ERROR_INCORRECT_TIMESTAMPS = "BRIGHTID_INCORRECT_TIMESTAMPS";
     string private constant ERROR_INCORRECT_SIGNATURES = "BRIGHTID_INCORRECT_SIGNATURES";
-    string private constant ERROR_INCORRECT_VERIFIER = "BRIGHTID_INCORRECT_VERIFIER";
-    string private constant ERROR_BAD_TIMESTAMP = "BRIGHTID_BAD_TIMESTAMP";
+    string private constant ERROR_SIGNATURES_DIFFERENT_LENGTHS = "BRIGHTID_SIGNATURES_DIFFERENT_LENGTHS";
+    string private constant ERROR_CAN_NOT_DELETE_VERIFIER = "BRIGHTID_CAN_NOT_DELETE_VERIFIER";
+    string private constant ERROR_NOT_VERIFIED = "BRIGHTID_NOT_VERIFIED";
 
     struct UserRegistration {
         address uniqueUserId;
@@ -27,6 +36,7 @@ contract BrightIdRegister is AragonApp {
 
     bytes32 public brightIdContext;
     address[] public brightIdVerifiers;
+    uint256 public requiredVerifications;
     uint256 public registrationPeriod;
     uint256 public verificationTimestampVariance;
 
@@ -37,37 +47,37 @@ contract BrightIdRegister is AragonApp {
     /**
     * @param _brightIdContext BrightId context used for verifying users
     * @param _brightIdVerifiers Addresses used to verify signed BrightId verifications
+    * @param _requiredVerifications Number of positive verifications required to register a user
     * @param _registrationPeriod Length of time after a registration before registration is required again
     * @param _verificationTimestampVariance Acceptable period of time between creating a BrightId verification
     *       and registering it with the BrightIdRegister
     */
     function initialize(
         bytes32 _brightIdContext,
-        address[] _brightIdVerifiers,
+        address[] memory _brightIdVerifiers,
+        uint256 _requiredVerifications,
         uint256 _registrationPeriod,
         uint256 _verificationTimestampVariance
     )
         public onlyInit
     {
-        require(_brightIdVerifiers.length > 0, ERROR_NO_VERIFIERS);
-        require(_registrationPeriod > 0, ERROR_REGISTRATION_PERIOD_ZERO);
+        _setBrightIdVerifiers(_brightIdVerifiers, _requiredVerifications);
+        _setRegistrationPeriod(_registrationPeriod);
 
         brightIdContext = _brightIdContext;
-        brightIdVerifiers = _brightIdVerifiers;
-        registrationPeriod = _registrationPeriod;
         verificationTimestampVariance = _verificationTimestampVariance;
 
         initialized();
     }
 
     /**
-    * @notice Set the BrightId verifier addresses to `_brightIdVerifiers`
-    * @dev Should never use address(0) as this will allow all verifications.
+    * @notice Set the BrightId verifier addresses to `_brightIdVerifiers` and required number of verifiers to `_requiredVerifications`
+    * @dev Should never use address(0) as a brightIdVerifier as this will allow all verifications.
     * @param _brightIdVerifiers Addresses used to verify signed BrightId verifications
+    * @param _requiredVerifications Number of positive verifications required to register a user
     */
-    function setBrightIdVerifiers(address[] _brightIdVerifiers) external auth(UPDATE_SETTINGS_ROLE) {
-        require(_brightIdVerifiers.length > 0, ERROR_NO_VERIFIERS);
-        brightIdVerifiers = _brightIdVerifiers;
+    function setBrightIdVerifiers(address[] _brightIdVerifiers, uint256 _requiredVerifications) external auth(UPDATE_SETTINGS_ROLE) {
+        _setBrightIdVerifiers(_brightIdVerifiers, _requiredVerifications);
     }
 
     /**
@@ -75,8 +85,7 @@ contract BrightIdRegister is AragonApp {
     * @param _registrationPeriod Length of time after a registration before registration is required again
     */
     function setRegistrationPeriod(uint256 _registrationPeriod) external auth(UPDATE_SETTINGS_ROLE) {
-        require(_registrationPeriod > 0, ERROR_REGISTRATION_PERIOD_ZERO);
-        registrationPeriod = _registrationPeriod;
+        _setRegistrationPeriod(_registrationPeriod);
     }
 
     /**
@@ -104,11 +113,11 @@ contract BrightIdRegister is AragonApp {
     * @param _functionCallData Function data to call on the contract address after registration
     */
     function register(
-        address[] _addrs,
-        uint256[] _timestamps,
-        uint8[] _v,
-        bytes32[] _r,
-        bytes32[] _s,
+        address[] memory _addrs,
+        uint256[] memory _timestamps,
+        uint8[] memory _v,
+        bytes32[] memory _r,
+        bytes32[] memory _s,
         RegisterAndCall _registerAndCall,
         bytes _functionCallData
     )
@@ -176,26 +185,52 @@ contract BrightIdRegister is AragonApp {
         return userRegistration.uniqueUserId;
     }
 
+    function _setBrightIdVerifiers(address[] memory _brightIdVerifiers, uint256 _requiredVerifications) internal {
+        require(_brightIdVerifiers.length >= MIN_BRIGHTID_VERIFIERS, ERROR_NO_VERIFIERS);
+        require(_brightIdVerifiers.length <= MAX_BRIGHTID_VERIFIERS, ERROR_TOO_MANY_VERIFIERS);
+        require(_requiredVerifications >= MIN_BRIGHTID_VERIFIERS, ERROR_NOT_ENOUGH_VERIFICATIONS);
+        require(_requiredVerifications <= _brightIdVerifiers.length, ERROR_TOO_MANY_VERIFICATIONS);
+
+        brightIdVerifiers = _brightIdVerifiers;
+        requiredVerifications = _requiredVerifications;
+    }
+
+    function _setRegistrationPeriod(uint256 _registrationPeriod) internal {
+        require(_registrationPeriod > 0, ERROR_REGISTRATION_PERIOD_ZERO);
+
+        registrationPeriod = _registrationPeriod;
+    }
+
     function _requireIsVerified(
         address[] memory _addrs,
-        uint256[] _timestamps,
-        uint8[] _v,
-        bytes32[] _r,
-        bytes32[] _s
+        uint256[] memory _timestamps,
+        uint8[] memory _v,
+        bytes32[] memory _r,
+        bytes32[] memory _s
     )
         internal view
     {
-        uint256 verifiersCount = brightIdVerifiers.length;
-        require(_timestamps.length == verifiersCount, ERROR_INCORRECT_TIMESTAMPS);
-        require(_v.length == verifiersCount && _r.length == verifiersCount && _s.length == verifiersCount, ERROR_INCORRECT_SIGNATURES);
+        require(_timestamps.length >= requiredVerifications, ERROR_INCORRECT_TIMESTAMPS);
+        require(_v.length >= requiredVerifications && _r.length >= requiredVerifications && _s.length >= requiredVerifications, ERROR_INCORRECT_SIGNATURES);
+        require((_timestamps.length == _v.length) && (_r.length == _s.length) && (_v.length == _s.length), ERROR_SIGNATURES_DIFFERENT_LENGTHS);
 
-        for (uint256 i = 0; i < verifiersCount; i++) {
+        address[] memory brightIdVerifiersCopy = brightIdVerifiers;
+        uint256 i = 0;
+        uint256 validVerifications = 0;
+
+        while (i < brightIdVerifiers.length && validVerifications < requiredVerifications) {
             bytes32 signedMessage = keccak256(abi.encodePacked(brightIdContext, _addrs, _timestamps[i]));
             address verifierAddress = ecrecover(signedMessage, _v[i], _r[i], _s[i]);
 
-            require(brightIdVerifiers[i] == verifierAddress, ERROR_INCORRECT_VERIFIER);
-            require(getTimestamp() < _timestamps[i].add(verificationTimestampVariance), ERROR_BAD_TIMESTAMP);
+            bool timestampWithinVariance = getTimestamp() < _timestamps[i].add(verificationTimestampVariance);
+            if (timestampWithinVariance && brightIdVerifiersCopy.contains(verifierAddress)) {
+                require(brightIdVerifiersCopy.deleteItem(verifierAddress), ERROR_CAN_NOT_DELETE_VERIFIER);
+                validVerifications++;
+            }
+            i++;
         }
+
+        require(validVerifications == requiredVerifications, ERROR_NOT_VERIFIED);
     }
 
     /**

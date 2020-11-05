@@ -8,12 +8,14 @@ const ethers = require('ethers')
 
 const ANY_ADDRESS = '0xffffffffffffffffffffffffffffffffffffffff'
 
-// Use the private keys of whatever the second and third accounts are in the local chain
-// In this case it is 0xead9c93b79ae7c1591b1fb5323bd777e86e150d4, 0xe5904695748fe4a84b40b3fc79de2277660bd1d3 which is
-// the second and third address in the buidlerevm node (can check with `npx buidler node`)
+// Use the private keys of whatever the second and third accounts are in the local chain. In this case it is
+// 0xead9c93b79ae7c1591b1fb5323bd777e86e150d4, 0xe5904695748fe4a84b40b3fc79de2277660bd1d3,
+// 0x92561f28ec438ee9831d00d1d59fbdc981b762b2 which is the second and third address in the buidlerevm node
+// (can check with `npx buidler node`)
 const VERIFICATIONS_PRIVATE_KEYS = [
   '0xd49743deccbccc5dc7baa8e69e5be03298da8688a15dd202e20f15d5e0e9a9fb',
-  '0x23c601ae397441f3ef6f1075dcb0031ff17fb079837beadaf3c84d96c6f3e569'
+  '0x23c601ae397441f3ef6f1075dcb0031ff17fb079837beadaf3c84d96c6f3e569',
+  '0xee9d129c1997549ee09c0757af5939b2483d80ad649a0eda68e8b0357ad11131'
 ]
 const BRIGHT_ID_CONTEXT = '0x3168697665000000000000000000000000000000000000000000000000000000' // stringToBytes32("1hive")
 const REGISTRATION_PERIOD = ONE_WEEK
@@ -36,7 +38,13 @@ const getVerificationsSignatures = (contextIds, timestamps) => {
   return { v: [...verifier1Sig.v, ...verifier2Sig.v], r: [...verifier1Sig.r, ...verifier2Sig.r], s: [...verifier1Sig.s, ...verifier2Sig.s]}
 }
 
-contract('BrightIdRegister', ([appManager, verifier, verifier2, brightIdUser, brightIdUser2, brightIdUser3]) => {
+const getFirstAndThirdVerificationsSignatures = (contextIds, timestamps) => {
+  const verifier1Sig = getVerificationsSignature(contextIds, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
+  const verifier3Sig = getVerificationsSignature(contextIds, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[2])
+  return { v: [...verifier1Sig.v, ...verifier3Sig.v], r: [...verifier1Sig.r, ...verifier3Sig.r], s: [...verifier1Sig.s, ...verifier3Sig.s]}
+}
+
+contract('BrightIdRegister', ([appManager, verifier, verifier2, verifier3, brightIdUser, brightIdUser2, brightIdUser3]) => {
   let dao, acl
   let brightIdRegisterBase, brightIdRegister
 
@@ -51,11 +59,11 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, brightIdUser, br
     await acl.createPermission(ANY_ADDRESS, brightIdRegister.address, await brightIdRegister.UPDATE_SETTINGS_ROLE(), appManager, { from: appManager })
   })
 
-  context('initialize(brightIdContext, brightIdVerifier, registrationPeriod, verificationTimestampVariance)', () => {
+  context('initialize(brightIdContext, brightIdVerifiers, requiredVerifications, registrationPeriod, verificationTimestampVariance)', () => {
     let addresses, timestamp, timestamps, signatures
 
     beforeEach(async () => {
-      await brightIdRegister.initialize(BRIGHT_ID_CONTEXT, [verifier, verifier2], REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE)
+      await brightIdRegister.initialize(BRIGHT_ID_CONTEXT, [verifier, verifier2], bn(2), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE)
       addresses = [brightIdUser]
       timestamp = await brightIdRegister.getTimestampPublic()
       timestamps = [timestamp, timestamp.add(bn(1))]
@@ -77,13 +85,46 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, brightIdUser, br
     it('reverts when registration period is 0', async () => {
       const brightIdRegisterProxyAddress = await newApp(dao, 'brightid-register', brightIdRegisterBase.address, appManager)
       brightIdRegister = await BrightIdRegister.at(brightIdRegisterProxyAddress)
-      await assertRevert(brightIdRegister.initialize(BRIGHT_ID_CONTEXT, [verifier], 0, VERIFICATION_TIMESTAMP_VARIANCE),
+      await assertRevert(brightIdRegister.initialize(BRIGHT_ID_CONTEXT, [verifier], bn(1), 0, VERIFICATION_TIMESTAMP_VARIANCE),
         'BRIGHTID_REGISTRATION_PERIOD_ZERO')
     })
 
-    context('setBrightIdVerifiers(brightIdVerifier)', () => {
+    it('reverts when empty brightid verifiers', async () => {
+      const brightIdRegisterProxyAddress = await newApp(dao, 'brightid-register', brightIdRegisterBase.address, appManager)
+      brightIdRegister = await BrightIdRegister.at(brightIdRegisterProxyAddress)
+      await assertRevert(brightIdRegister.initialize(BRIGHT_ID_CONTEXT, [], bn(0), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE),
+        'BRIGHTID_NO_VERIFIERS')
+    })
+
+    it('reverts when more brightid verifiers than max', async () => {
+      const brightIdRegisterProxyAddress = await newApp(dao, 'brightid-register', brightIdRegisterBase.address, appManager)
+      brightIdRegister = await BrightIdRegister.at(brightIdRegisterProxyAddress)
+      const maxBrightIdVerifiers = await brightIdRegister.MAX_BRIGHTID_VERIFIERS()
+      let brightIdVerifiers = [verifier]
+      for (let i = 0; i < maxBrightIdVerifiers; i++) {
+        brightIdVerifiers.push(verifier)
+      }
+      await assertRevert(brightIdRegister.initialize(BRIGHT_ID_CONTEXT, brightIdVerifiers, bn(maxBrightIdVerifiers), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE),
+        'BRIGHTID_TOO_MANY_VERIFIERS')
+    })
+
+    it('reverts when required verifiers is zero', async () => {
+      const brightIdRegisterProxyAddress = await newApp(dao, 'brightid-register', brightIdRegisterBase.address, appManager)
+      brightIdRegister = await BrightIdRegister.at(brightIdRegisterProxyAddress)
+      await assertRevert(brightIdRegister.initialize(BRIGHT_ID_CONTEXT, [verifier], bn(0), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE),
+        'BRIGHTID_NOT_ENOUGH_VERIFICATIONS')
+    })
+
+    it('reverts when required verifiers is more than given verifiers', async () => {
+      const brightIdRegisterProxyAddress = await newApp(dao, 'brightid-register', brightIdRegisterBase.address, appManager)
+      brightIdRegister = await BrightIdRegister.at(brightIdRegisterProxyAddress)
+      await assertRevert(brightIdRegister.initialize(BRIGHT_ID_CONTEXT, [verifier], bn(2), REGISTRATION_PERIOD, VERIFICATION_TIMESTAMP_VARIANCE),
+        'BRIGHTID_TOO_MANY_VERIFICATIONS')
+    })
+
+    context('setBrightIdVerifiers(brightIdVerifier, requiredVerifications)', () => {
       it('sets the bright id verifier', async () => {
-        await brightIdRegister.setBrightIdVerifiers([verifier2])
+        await brightIdRegister.setBrightIdVerifiers([verifier2], 1)
 
         const brightIdVerifiers = await brightIdRegister.getBrightIdVerifiers()
         assert.deepEqual(brightIdVerifiers, [verifier2], 'Incorrect bright id verifier')
@@ -92,7 +133,7 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, brightIdUser, br
       context('register(brightIdContext, addrs, timestamps, v, r, s, registerAndCall, functionCallData)', () => {
         it('registers user', async () => {
           const signature = getVerificationsSignature(addresses, timestamp, VERIFICATIONS_PRIVATE_KEYS[1])
-          await brightIdRegister.setBrightIdVerifiers([verifier2])
+          await brightIdRegister.setBrightIdVerifiers([verifier2], bn(1))
 
           await brightIdRegister.register(addresses, [timestamp], signature.v, signature.r, signature.s, ZERO_ADDRESS, '0x0', { from: brightIdUser })
 
@@ -104,12 +145,32 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, brightIdUser, br
       })
 
       it('reverts when setting to empty list', async () => {
-        await assertRevert(brightIdRegister.setBrightIdVerifiers([]), 'BRIGHTID_NO_VERIFIERS')
+        await assertRevert(brightIdRegister.setBrightIdVerifiers([], bn(0)), 'BRIGHTID_NO_VERIFIERS')
+      })
+
+      it('reverts when more brightid verifiers than max', async () => {
+        const maxBrightIdVerifiers = await brightIdRegister.MAX_BRIGHTID_VERIFIERS()
+        let brightIdVerifiers = [verifier]
+        for (let i = 0; i < maxBrightIdVerifiers; i++) {
+          brightIdVerifiers.push(verifier)
+        }
+        await assertRevert(brightIdRegister.setBrightIdVerifiers(brightIdVerifiers, bn(maxBrightIdVerifiers)),
+          'BRIGHTID_TOO_MANY_VERIFIERS')
+      })
+
+      it('reverts when required verifiations is zero', async () => {
+        await assertRevert(brightIdRegister.setBrightIdVerifiers([verifier], bn(0)),
+          'BRIGHTID_NOT_ENOUGH_VERIFICATIONS')
+      })
+
+      it('reverts when required verifications is more than given verifiers', async () => {
+        await assertRevert(brightIdRegister.setBrightIdVerifiers([verifier], bn(2)),
+          'BRIGHTID_TOO_MANY_VERIFICATIONS')
       })
 
       it('reverts when no permission', async () => {
         await acl.revokePermission(ANY_ADDRESS, brightIdRegister.address, await brightIdRegister.UPDATE_SETTINGS_ROLE())
-        await assertRevert(brightIdRegister.setBrightIdVerifiers([verifier2]), 'APP_AUTH_FAILED')
+        await assertRevert(brightIdRegister.setBrightIdVerifiers([verifier2], bn(1)), 'APP_AUTH_FAILED')
       })
     })
 
@@ -166,16 +227,39 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, brightIdUser, br
           signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser }), 'BRIGHTID_INCORRECT_SIGNATURES')
       })
 
+      it('reverts when sigantures different lengths', async () => {
+        await assertRevert(brightIdRegister.register(addresses, [...timestamps, timestamps[0]], signatures.v,
+          signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser }), 'BRIGHTID_SIGNATURES_DIFFERENT_LENGTHS')
+
+        await assertRevert(brightIdRegister.register(addresses, timestamps, [...signatures.v, signatures.v[0]],
+          signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser }), 'BRIGHTID_SIGNATURES_DIFFERENT_LENGTHS')
+
+        await assertRevert(brightIdRegister.register(addresses, timestamps, signatures.v,
+          [...signatures.r, signatures.r[0]], signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser }), 'BRIGHTID_SIGNATURES_DIFFERENT_LENGTHS')
+
+        await assertRevert(brightIdRegister.register(addresses, timestamps, signatures.v,
+          signatures.r, [...signatures.s, signatures.s[0]], ZERO_ADDRESS, '0x0', { from: brightIdUser }), 'BRIGHTID_SIGNATURES_DIFFERENT_LENGTHS')
+      })
+
       it('reverts when incorrect verification signature used', async () => {
         await assertRevert(brightIdRegister.register(addresses, timestamps, [signatures.v[0] - 1, signatures.v[1]],
-          signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser }), 'BRIGHTID_INCORRECT_VERIFIER')
+          signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser }), 'BRIGHTID_NOT_VERIFIED')
+      })
+
+      it('reverts when same verification is used twice', async () => {
+        const verifier1Sig = getVerificationsSignature(addresses, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
+        const v = [...verifier1Sig.v, ...verifier1Sig.v]
+        const r = [...verifier1Sig.r, ...verifier1Sig.r]
+        const s = [...verifier1Sig.s, ...verifier1Sig.s]
+        await assertRevert(brightIdRegister.register(addresses, timestamps, v, r, s, ZERO_ADDRESS, '0x0',
+          { from: brightIdUser }), 'BRIGHTID_NOT_VERIFIED')
       })
 
       it('reverts when verification timestamp too far in the past', async () => {
         const verificationTimestampVariance = await brightIdRegister.verificationTimestampVariance()
         await brightIdRegister.mockIncreaseTime(verificationTimestampVariance)
         await assertRevert(brightIdRegister.register(addresses, timestamps, signatures.v, signatures.r,
-          signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser }), 'BRIGHTID_BAD_TIMESTAMP')
+          signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser }), 'BRIGHTID_NOT_VERIFIED')
       })
 
       it('reverts when voided address is used', async () => {
@@ -189,6 +273,19 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, brightIdUser, br
 
       it('registers user', async () => {
         await brightIdRegister.register(addresses, timestamps, signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser })
+
+        const { uniqueUserId, registerTime, addressVoid } = await brightIdRegister.userRegistrations(brightIdUser)
+        assert.equal(uniqueUserId, brightIdUser, 'Incorrect unique id')
+        assert.closeTo(registerTime.toNumber(), timestamp.toNumber(), 3, 'Incorrect register time')
+        assert.isFalse(addressVoid, 'Incorrect address void')
+      })
+
+      it('registers user when verifications are in different order', async () => {
+        const verifier1Sig = getVerificationsSignature(addresses, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
+        const verifier2Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[1])
+        signatures = { v: [...verifier2Sig.v, ...verifier1Sig.v], r: [...verifier2Sig.r, ...verifier1Sig.r], s: [...verifier2Sig.s, ...verifier1Sig.s]}
+
+        await brightIdRegister.register(addresses, [timestamps[1], timestamps[0]], signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser })
 
         const { uniqueUserId, registerTime, addressVoid } = await brightIdRegister.userRegistrations(brightIdUser)
         assert.equal(uniqueUserId, brightIdUser, 'Incorrect unique id')
@@ -252,6 +349,77 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, brightIdUser, br
       it('does not call external function when address is 0x0', async () => {
         const registerReceipt = await brightIdRegister.register(addresses, timestamps, signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser })
         assert.deepEqual(getEvents(registerReceipt, 'ReceiveRegistration', { decodeForAbi: RegisterAndCallAbi }), [], 'Incorrect event fired')
+      })
+
+      context('when requiring 2 out of 3 verifications', async () => {
+        beforeEach(async () =>{
+          await brightIdRegister.setBrightIdVerifiers([verifier, verifier2, verifier3], 2)
+        })
+
+        it('registers user when using first and third verifications signatures', async () => {
+          signatures = getFirstAndThirdVerificationsSignatures(addresses, timestamps)
+          await brightIdRegister.register(addresses, timestamps, signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser })
+
+          const { uniqueUserId, registerTime, addressVoid } = await brightIdRegister.userRegistrations(brightIdUser)
+          assert.equal(uniqueUserId, brightIdUser, 'Incorrect unique id')
+          assert.closeTo(registerTime.toNumber(), timestamp.toNumber(), 3, 'Incorrect register time')
+          assert.isFalse(addressVoid, 'Incorrect address void')
+        })
+
+        it('registers user when using all 3 verifiers signatures', async () => {
+          const verifier1Sig = getVerificationsSignature(addresses, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
+          const verifier2Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[1])
+          const verifier3Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[2])
+          signatures = { v: [...verifier1Sig.v, ...verifier2Sig.v, ...verifier3Sig.v],
+            r: [...verifier1Sig.r, ...verifier2Sig.r, ...verifier3Sig.r],
+            s: [...verifier1Sig.s, ...verifier2Sig.s, ...verifier3Sig.s]}
+
+          await brightIdRegister.register(addresses, [...timestamps, timestamps[1]], signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser })
+
+          const { uniqueUserId, registerTime, addressVoid } = await brightIdRegister.userRegistrations(brightIdUser)
+          assert.equal(uniqueUserId, brightIdUser, 'Incorrect unique id')
+          assert.closeTo(registerTime.toNumber(), timestamp.toNumber(), 3, 'Incorrect register time')
+          assert.isFalse(addressVoid, 'Incorrect address void')
+        })
+
+        it('registers user when using all 3 verifiers signatures but one is wrong', async () => {
+          const verifier1Sig = getVerificationsSignature(addresses, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
+          const verifier2Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[1])
+          const verifier3Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[2])
+          signatures = { v: [verifier1Sig.v[0] - 1, ...verifier2Sig.v, ...verifier3Sig.v],
+            r: [...verifier1Sig.r, ...verifier2Sig.r, ...verifier3Sig.r],
+            s: [...verifier1Sig.s, ...verifier2Sig.s, ...verifier3Sig.s]}
+
+          await brightIdRegister.register(addresses, [...timestamps, timestamps[1]], signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser })
+
+          const { uniqueUserId, registerTime, addressVoid } = await brightIdRegister.userRegistrations(brightIdUser)
+          assert.equal(uniqueUserId, brightIdUser, 'Incorrect unique id')
+          assert.closeTo(registerTime.toNumber(), timestamp.toNumber(), 3, 'Incorrect register time')
+          assert.isFalse(addressVoid, 'Incorrect address void')
+        })
+
+        it('reverts when using all 3 verifiers signatures but two are wrong', async () => {
+          const verifier1Sig = getVerificationsSignature(addresses, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
+          const verifier2Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[1])
+          const verifier3Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[2])
+          signatures = { v: [verifier1Sig.v[0] - 1, verifier2Sig.v[0] - 1, ...verifier3Sig.v],
+            r: [...verifier1Sig.r, ...verifier2Sig.r, ...verifier3Sig.r],
+            s: [...verifier1Sig.s, ...verifier2Sig.s, ...verifier3Sig.s]}
+
+          await assertRevert(brightIdRegister.register(addresses, [...timestamps, timestamps[1]], signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser }),
+            'BRIGHTID_NOT_VERIFIED')
+        })
+
+        it('reverts when using 3 verifiers signatures but one is wrong and two are the same', async () => {
+          const verifier1Sig = getVerificationsSignature(addresses, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
+          const verifier3Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[2])
+          signatures = { v: [...verifier1Sig.v, ...verifier1Sig.v, verifier3Sig.v[0] - 1],
+            r: [...verifier1Sig.r, ...verifier1Sig.r, ...verifier3Sig.r],
+            s: [...verifier1Sig.s, ...verifier1Sig.s, ...verifier3Sig.s]}
+
+          await assertRevert(brightIdRegister.register(addresses, [...timestamps, timestamps[1]], signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser }),
+            'BRIGHTID_NOT_VERIFIED')
+        })
       })
     })
 
