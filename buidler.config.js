@@ -18,12 +18,29 @@ module.exports = {
       gas: 7.9e6,
       gasPrice: 15000000001
     },
+    xdai: {
+      url: 'https://dai.poa.network',
+      accounts: [process.env.ETH_KEY],
+      gas: 12e6,
+      gasPrice: 1000000000
+    },
+    arbtest: {
+      url: 'https://rinkeby.arbitrum.io/rpc',
+      accounts: [process.env.ETH_KEY],
+      gasPrice: 0,
+    },
+    arbitrum: {
+      url: 'https://arb1.arbitrum.io/rpc',
+      accounts: [process.env.ETH_KEY],
+      gasPrice: 0,
+      gas: 700e6
+    },
   },
   solc: {
     version: '0.4.24',
     optimizer: {
       enabled: true,
-      runs: 10000,
+      runs: 20000,
     },
   },
   // Etherscan plugin configuration. Learn more at https://github.com/nomiclabs/buidler/tree/master/packages/buidler-etherscan
