@@ -1,9 +1,27 @@
+# Dependencies
 node_modules
-artifacts
-.cache
+
+# coverage
+/coverage
+/coverageEnv
+/coverage.json
+
+# build artifacts
+# Ignore only for first level to select just the contract build directories
 cache
-dist
-ipfs.cmd
+artifacts
+
+# yarn
+yarn-error.log
+
+# Ignore package-lock files (only use yarn.lock)
 package-lock.json
-.idea
-yarn.lock
+
+# Misc
+.DS_Store
+.cache
+.env
+
+dist/artifact.json
+dist/manifest.json
+dist/code.sol
