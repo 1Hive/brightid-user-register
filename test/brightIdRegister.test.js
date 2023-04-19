@@ -1,8 +1,8 @@
 const BrightIdRegister = artifacts.require('BrightIdRegisterMock.sol')
 const RegisterAndCall = artifacts.require('RegisterAndCallMock.sol')
-const RegisterAndCallAbi = require('../artifacts/RegisterAndCallMock.json').abi
-const { assertRevert } = require('@aragon/contract-helpers-test/src/asserts/assertThrow')
-const { ONE_DAY, ONE_WEEK, ZERO_ADDRESS, getEventArgument, getEvents, bn } = require('@aragon/contract-helpers-test')
+const RegisterAndCallAbi = artifacts.require('RegisterAndCallMock.sol').abi
+const { assertRevert } = require('@1hive/contract-helpers-test/src/asserts/assertThrow')
+const { ONE_DAY, ONE_WEEK, ZERO_ADDRESS, getEventArgument, getEvents, bn } = require('@1hive/contract-helpers-test')
 const { newDao, newApp } = require('./helpers/dao')
 const ethers = require('ethers')
 
@@ -35,13 +35,13 @@ const getVerificationsSignature = (contextIds, timestamp, privateKey) => {
 const getVerificationsSignatures = (contextIds, timestamps) => {
   const verifier1Sig = getVerificationsSignature(contextIds, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
   const verifier2Sig = getVerificationsSignature(contextIds, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[1])
-  return { v: [...verifier1Sig.v, ...verifier2Sig.v], r: [...verifier1Sig.r, ...verifier2Sig.r], s: [...verifier1Sig.s, ...verifier2Sig.s]}
+  return { v: [...verifier1Sig.v, ...verifier2Sig.v], r: [...verifier1Sig.r, ...verifier2Sig.r], s: [...verifier1Sig.s, ...verifier2Sig.s] }
 }
 
 const getFirstAndThirdVerificationsSignatures = (contextIds, timestamps) => {
   const verifier1Sig = getVerificationsSignature(contextIds, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
   const verifier3Sig = getVerificationsSignature(contextIds, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[2])
-  return { v: [...verifier1Sig.v, ...verifier3Sig.v], r: [...verifier1Sig.r, ...verifier3Sig.r], s: [...verifier1Sig.s, ...verifier3Sig.s]}
+  return { v: [...verifier1Sig.v, ...verifier3Sig.v], r: [...verifier1Sig.r, ...verifier3Sig.r], s: [...verifier1Sig.s, ...verifier3Sig.s] }
 }
 
 contract('BrightIdRegister', ([appManager, verifier, verifier2, verifier3, brightIdUser, brightIdUser2, brightIdUser3]) => {
@@ -283,7 +283,7 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, verifier3, brigh
       it('registers user when verifications are in different order', async () => {
         const verifier1Sig = getVerificationsSignature(addresses, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
         const verifier2Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[1])
-        signatures = { v: [...verifier2Sig.v, ...verifier1Sig.v], r: [...verifier2Sig.r, ...verifier1Sig.r], s: [...verifier2Sig.s, ...verifier1Sig.s]}
+        signatures = { v: [...verifier2Sig.v, ...verifier1Sig.v], r: [...verifier2Sig.r, ...verifier1Sig.r], s: [...verifier2Sig.s, ...verifier1Sig.s] }
 
         await brightIdRegister.register(addresses, [timestamps[1], timestamps[0]], signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser })
 
@@ -352,7 +352,7 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, verifier3, brigh
       })
 
       context('when requiring 2 out of 3 verifications', async () => {
-        beforeEach(async () =>{
+        beforeEach(async () => {
           await brightIdRegister.setBrightIdVerifiers([verifier, verifier2, verifier3], 2)
         })
 
@@ -370,9 +370,11 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, verifier3, brigh
           const verifier1Sig = getVerificationsSignature(addresses, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
           const verifier2Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[1])
           const verifier3Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[2])
-          signatures = { v: [...verifier1Sig.v, ...verifier2Sig.v, ...verifier3Sig.v],
+          signatures = {
+            v: [...verifier1Sig.v, ...verifier2Sig.v, ...verifier3Sig.v],
             r: [...verifier1Sig.r, ...verifier2Sig.r, ...verifier3Sig.r],
-            s: [...verifier1Sig.s, ...verifier2Sig.s, ...verifier3Sig.s]}
+            s: [...verifier1Sig.s, ...verifier2Sig.s, ...verifier3Sig.s]
+          }
 
           await brightIdRegister.register(addresses, [...timestamps, timestamps[1]], signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser })
 
@@ -386,9 +388,11 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, verifier3, brigh
           const verifier1Sig = getVerificationsSignature(addresses, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
           const verifier2Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[1])
           const verifier3Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[2])
-          signatures = { v: [verifier1Sig.v[0] - 1, ...verifier2Sig.v, ...verifier3Sig.v],
+          signatures = {
+            v: [verifier1Sig.v[0] - 1, ...verifier2Sig.v, ...verifier3Sig.v],
             r: [...verifier1Sig.r, ...verifier2Sig.r, ...verifier3Sig.r],
-            s: [...verifier1Sig.s, ...verifier2Sig.s, ...verifier3Sig.s]}
+            s: [...verifier1Sig.s, ...verifier2Sig.s, ...verifier3Sig.s]
+          }
 
           await brightIdRegister.register(addresses, [...timestamps, timestamps[1]], signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser })
 
@@ -402,9 +406,11 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, verifier3, brigh
           const verifier1Sig = getVerificationsSignature(addresses, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
           const verifier2Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[1])
           const verifier3Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[2])
-          signatures = { v: [verifier1Sig.v[0] - 1, verifier2Sig.v[0] - 1, ...verifier3Sig.v],
+          signatures = {
+            v: [verifier1Sig.v[0] - 1, verifier2Sig.v[0] - 1, ...verifier3Sig.v],
             r: [...verifier1Sig.r, ...verifier2Sig.r, ...verifier3Sig.r],
-            s: [...verifier1Sig.s, ...verifier2Sig.s, ...verifier3Sig.s]}
+            s: [...verifier1Sig.s, ...verifier2Sig.s, ...verifier3Sig.s]
+          }
 
           await assertRevert(brightIdRegister.register(addresses, [...timestamps, timestamps[1]], signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser }),
             'BRIGHTID_NOT_VERIFIED')
@@ -413,9 +419,11 @@ contract('BrightIdRegister', ([appManager, verifier, verifier2, verifier3, brigh
         it('reverts when using 3 verifiers signatures but one is wrong and two are the same', async () => {
           const verifier1Sig = getVerificationsSignature(addresses, timestamps[0], VERIFICATIONS_PRIVATE_KEYS[0])
           const verifier3Sig = getVerificationsSignature(addresses, timestamps[1], VERIFICATIONS_PRIVATE_KEYS[2])
-          signatures = { v: [...verifier1Sig.v, ...verifier1Sig.v, verifier3Sig.v[0] - 1],
+          signatures = {
+            v: [...verifier1Sig.v, ...verifier1Sig.v, verifier3Sig.v[0] - 1],
             r: [...verifier1Sig.r, ...verifier1Sig.r, ...verifier3Sig.r],
-            s: [...verifier1Sig.s, ...verifier1Sig.s, ...verifier3Sig.s]}
+            s: [...verifier1Sig.s, ...verifier1Sig.s, ...verifier3Sig.s]
+          }
 
           await assertRevert(brightIdRegister.register(addresses, [...timestamps, timestamps[1]], signatures.v, signatures.r, signatures.s, ZERO_ADDRESS, '0x0', { from: brightIdUser }),
             'BRIGHTID_NOT_VERIFIED')

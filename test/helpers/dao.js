@@ -1,5 +1,5 @@
 const { hash } = require('eth-ens-namehash')
-const { getEventArgument } = require('@aragon/contract-helpers-test')
+const { getEventArgument } = require('@1hive/contract-helpers-test')
 const Kernel = artifacts.require('Kernel')
 const ACL = artifacts.require('ACL')
 const EVMScriptRegistryFactory = artifacts.require('EVMScriptRegistryFactory')
